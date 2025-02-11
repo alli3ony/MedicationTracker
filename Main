@@ -1,1 +1,126 @@
+import tkinter as tk
+from tkinter import ttk, messagebox
+from datetime import datetime
+import json
 
+class MedicationTracker(tk.Tk):
+    def __init__(self):
+        super().__init__()
+        self.title("Medication Tracker")
+        self.geometry("800x600")
+
+        # Initialize data storage
+        self.medications = {}
+        self.load_data()
+
+        # Create main container
+        self.container = ttk.Frame(self)
+        self.container.pack(fill="both", expand=True)
+
+        # Create navigation
+        self.create_navigation()
+
+        # Create main content area
+        self.content = ttk.Frame(self.container)
+        self.content.pack(fill="both", expand=True, padx=10, pady=10)
+
+        self.show_dashboard()
+
+    def create_navigation(self):
+        nav = ttk.Frame(self.container)
+        nav.pack(fill="x", padx=5, pady=5)
+
+        ttk.Button(nav, text="Dashboard", command=self.show_dashboard).pack(side="left", padx=5)
+        ttk.Button(nav, text="Add Medication", command=self.show_add_medication).pack(side="left", padx=5)
+        ttk.Button(nav, text="View History", command=self.show_history).pack(side="left", padx=5)
+
+    def show_dashboard(self):
+        # Clear current content
+        for widget in self.content.winfo_children():
+            widget.destroy()
+
+        ttk.Label(self.content, text="Your Medications", font=("Helvetica", 16)).pack(pady=10)
+
+        # Create medication list
+        if self.medications:
+            for med_name, med_info in self.medications.items():
+                med_frame = ttk.Frame(self.content)
+                med_frame.pack(fill="x", pady=5)
+
+                ttk.Label(med_frame, text=f"{med_name} - {med_info['dosage']}").pack(side="left")
+                ttk.Button(med_frame, text="Take", 
+                          command=lambda m=med_name: self.log_medication(m)).pack(side="right")
+
+    def show_add_medication(self):
+        # Clear current content
+        for widget in self.content.winfo_children():
+            widget.destroy()
+
+        ttk.Label(self.content, text="Add New Medication", font=("Helvetica", 16)).pack(pady=10)
+
+        # Create form
+        form = ttk.Frame(self.content)
+        form.pack(pady=10)
+
+        ttk.Label(form, text="Medication Name:").grid(row=0, column=0, pady=5)
+        name_entry = ttk.Entry(form)
+        name_entry.grid(row=0, column=1, pady=5)
+
+        ttk.Label(form, text="Dosage:").grid(row=1, column=0, pady=5)
+        dosage_entry = ttk.Entry(form)
+        dosage_entry.grid(row=1, column=1, pady=5)
+
+        def save_medication():
+            name = name_entry.get()
+            dosage = dosage_entry.get()
+
+            if name and dosage:
+                self.medications[name] = {
+                    "dosage": dosage,
+                    "created_date": datetime.now().strftime("%Y-%m-%d")
+                }
+                self.save_data()
+                messagebox.showinfo("Success", "Medication added successfully!")
+                self.show_dashboard()
+            else:
+                messagebox.showerror("Error", "Please fill all fields")
+
+        ttk.Button(form, text="Save", command=save_medication).grid(row=2, column=0, columnspan=2, pady=10)
+
+    def show_history(self):
+        # Clear current content
+        for widget in self.content.winfo_children():
+            widget.destroy()
+
+        ttk.Label(self.content, text="Medication History", font=("Helvetica", 16)).pack(pady=10)
+
+        # Add history view implementation here
+
+    def log_medication(self, medication_name):
+        # Log when medication is taken
+        if 'log' not in self.medications[medication_name]:
+            self.medications[medication_name]['log'] = []
+
+        self.medications[medication_name]['log'].append(
+            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        )
+        self.save_data()
+        messagebox.showinfo("Success", f"{medication_name} logged successfully!")
+
+    def save_data(self):
+        try:
+            with open("medication_data.json", "w") as f:
+                json.dump(self.medications, f)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not save data: {str(e)}")
+
+    def load_data(self):
+        try:
+            with open("medication_data.json", "r") as f:
+                self.medications = json.load(f)
+        except FileNotFoundError:
+            self.medications = {}
+
+if __name__ == "__main__":
+    app = MedicationTracker()
+    app.mainloop()
