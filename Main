@@ -121,6 +121,113 @@ class MedicationTracker(tk.Tk):
         except FileNotFoundError:
             self.medications = {}
 
+class Login(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+
+        self.configure(width=1000, height=1000)
+
+        welcome = tk.Label(self, text='Welcome', font=('calibre', 30, 'bold'))
+
+        # User input
+        self.name_var = tk.StringVar()
+        self.passw_var = tk.StringVar()
+
+        # Creating labels and entries
+        name_label = tk.Label(self, text='Username', font=('calibre', 10, 'bold'))
+        name_entry = tk.Entry(self, textvariable=self.name_var, font=('calibre', 10, 'normal'))
+
+        passw_label = tk.Label(self, text='Password', font=('calibre', 10, 'bold'))
+        passw_entry = tk.Entry(self, textvariable=self.passw_var, font=('calibre', 10, 'normal'), show='*')
+
+        # Login button
+        sub_btn = tk.Button(self, text='Login', command=self.submit)
+
+        # Placing widgets
+        welcome.place(x=400, y=50)
+        name_label.place(x=400, y=100)
+        name_entry.place(x=400, y=120)
+        passw_label.place(x=400, y=150)
+        passw_entry.place(x=400, y=170)
+        sub_btn.place(x=400, y=250)
+
+        # Navigation buttons
+        button1 = tk.Button(self, text="New User?",
+                            command=lambda: controller.show_frame("CreateAcc"))
+        button1.place(x=200, y=250)
+
+        button2 = tk.Button(self, text="Forgot Password",
+                            command=lambda: controller.show_frame("ResetPwd"))
+        button2.place(x=600, y=250)
+
+    def submit(self):
+        name = self.name_var.get()
+        password = self.passw_var.get()
+
+        # Check if the username exists and the password matches
+        if name in self.controller.user_data and self.controller.user_data[name]['password'] == password:
+            print(f"Login successful for user: {name}")
+            self.controller.set_current_user(name)
+            self.controller.show_frame("Homepage")
+        else:
+            print("Invalid username or password")
+            messagebox.showerror("Login Error", "Invalid username or password")
+
+        self.name_var.set("")
+        self.passw_var.set("")
+    
+class CreateAcc(tk.Frame):
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+        self.controller = controller
+
+        self.username_var = tk.StringVar()
+        self.password_var = tk.StringVar()
+        self.confirm_password_var = tk.StringVar()
+
+        # Username
+        tk.Label(self, text="Username:").pack(pady=10)
+        self.username_entry = tk.Entry(self, textvariable=self.username_var)
+        self.username_entry.pack()
+
+        # Password
+        tk.Label(self, text="Password:").pack(pady=10)
+        self.password_entry = tk.Entry(self, textvariable=self.password_var, show="*")
+        self.password_entry.pack()
+
+        # Confirm Password
+        tk.Label(self, text="Confirm Password:").pack(pady=10)
+        self.confirm_password_entry = tk.Entry(self, textvariable=self.confirm_password_var, show="*")
+        self.confirm_password_entry.pack()
+
+        # Create Account Button
+        tk.Button(self, text="Create Account", command=self.create_account).pack(pady=20)
+
+        # Back to Login Button
+        tk.Button(self, text="Back to Login", command=lambda: controller.show_frame("Login")).pack()
+
+    def create_account(self):
+        username = self.username_var.get()
+        password = self.password_var.get()
+        confirm_password = self.confirm_password_var.get()
+
+        if username and password and confirm_password:
+            if password != confirm_password:
+                messagebox.showerror("Error", "Passwords do not match")
+            elif self.controller.add_user(username, password):
+                self.controller.show_frame("SetSecurityQs")
+            else:
+                messagebox.showerror("Error", "Username already exists")
+        else:
+            messagebox.showerror("Error", "All fields must be filled")
+
+        # Clear the entry fields
+        self.username_var.set("")
+        self.password_var.set("")
+        self.confirm_password_var.set("")
+        
+        
 if __name__ == "__main__":
     app = MedicationTracker()
     app.mainloop()
