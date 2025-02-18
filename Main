@@ -228,6 +228,180 @@ class CreateAcc(tk.Frame):
         self.confirm_password_var.set("")
         
         
+class ReminderSystem:
+    def __init__(self, parent):
+        self.parent = parent
+        self.reminders = {}
+        self.load_reminders()
+
+        # Main reminder frame
+        self.frame = ttk.Frame(parent)
+        self.frame.pack(fill="both", expand=True, padx=10, pady=10)
+
+        # Header with back button
+        self.header_frame = ttk.Frame(self.frame)
+        self.header_frame.pack(fill="x", pady=5)
+
+        self.back_button = ttk.Button(
+            self.header_frame, 
+            text="← Back to Dashboard",
+            command=self.go_to_dashboard
+        )
+        self.back_button.pack(side="left")
+
+        ttk.Label(
+            self.header_frame, 
+            text="Medication Reminders", 
+            font=("Helvetica", 16, "bold")
+        ).pack(side="left", padx=20)
+
+        # Reminders list frame
+        self.reminders_frame = ttk.Frame(self.frame)
+        self.reminders_frame.pack(fill="both", expand=True, pady=10)
+
+        self.create_reminder_list()
+
+    def create_reminder_list(self):
+        # Clear existing reminders
+        for widget in self.reminders_frame.winfo_children():
+            widget.destroy()
+
+        # Headers
+        headers = ["Medication", "Time", "Status", "Toggle"]
+        for i, header in enumerate(headers):
+            ttk.Label(
+                self.reminders_frame, 
+                text=header, 
+                font=("Helvetica", 12, "bold")
+            ).grid(row=0, column=i, padx=5, pady=5)
+
+        # List medications and their reminders
+        for row, (med_name, reminder_info) in enumerate(self.reminders.items(), start=1):
+            # Medication name
+            ttk.Label(
+                self.reminders_frame, 
+                text=med_name
+            ).grid(row=row, column=0, padx=5, pady=2)
+
+            # Reminder time
+            ttk.Label(
+                self.reminders_frame, 
+                text=reminder_info['time']
+            ).grid(row=row, column=1, padx=5, pady=2)
+
+            # Status
+            status_text = "Active" if reminder_info['active'] else "Inactive"
+            ttk.Label(
+                self.reminders_frame, 
+                text=status_text
+            ).grid(row=row, column=2, padx=5, pady=2)
+
+            # Toggle button
+            toggle_btn = ttk.Button(
+                self.reminders_frame,
+                text="Turn Off" if reminder_info['active'] else "Turn On",
+                command=lambda m=med_name: self.toggle_reminder(m)
+            )
+            toggle_btn.grid(row=row, column=3, padx=5, pady=2)
+
+    def toggle_reminder(self, medication_name):
+        """Toggle reminder status for a medication"""
+        if medication_name in self.reminders:
+            self.reminders[medication_name]['active'] = not self.reminders[medication_name]['active']
+            self.save_reminders()
+            self.create_reminder_list()
+
+            status = "activated" if self.reminders[medication_name]['active'] else "deactivated"
+            messagebox.showinfo(
+                "Reminder Update", 
+                f"Reminder for {medication_name} has been {status}."
+            )
+
+    def set_reminder(self, medication_name, reminder_time, dosage):
+        """Set a new reminder"""
+        self.reminders[medication_name] = {
+            'time': reminder_time,
+            'active': True,
+            'dosage': dosage
+        }
+        self.save_reminders()
+        self.create_reminder_list()
+
+    def check_reminders(self):
+        """Check and trigger reminders"""
+        current_time = datetime.now().strftime("%H:%M")
+        for med_name, reminder_info in self.reminders.items():
+            if reminder_info['active'] and reminder_info['time'] == current_time:
+                self.trigger_reminder(med_name, reminder_info['dosage'])
+
+    def trigger_reminder(self, medication_name, dosage):
+        """Trigger a desktop notification"""
+        notification.notify(
+            title="Medication Reminder",
+            message=f"Time to take {medication_name}\nDosage: {dosage}",
+            app_icon=None,  # e.g. 'C:\\icon_32x32.ico'
+            timeout=10,  # seconds
+        )
+
+    def save_reminders(self):
+        """Save reminders to file"""
+        try:
+            with open("reminders.json", "w") as f:
+                json.dump(self.reminders, f)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not save reminders: {str(e)}")
+
+    def load_reminders(self):
+        """Load reminders from file"""
+        try:
+            with open("reminders.json", "r") as f:
+                self.reminders = json.load(f)
+        except FileNotFoundError:
+            self.reminders = {}
+
+    def go_to_dashboard(self):
+        """Navigate back to dashboard"""
+        self.parent.show_frame("DashboardPage")
+
+# Add Reminder Dialog
+class AddReminderDialog(tk.Toplevel):
+    def __init__(self, parent, callback):
+        super().__init__(parent)
+        self.callback = callback
+        self.title("Set Reminder")
+        self.geometry("300x200")
+
+        # Time selection
+        ttk.Label(self, text="Select Time:").pack(pady=5)
+        self.time_var = tk.StringVar()
+        self.time_entry = ttk.Entry(self, textvariable=self.time_var)
+        self.time_entry.pack(pady=5)
+        ttk.Label(self, text="Format: HH:MM").pack()
+
+        # Buttons
+        ttk.Button(
+            self, 
+            text="Set Reminder",
+            command=self.set_reminder
+        ).pack(pady=20)
+
+        ttk.Button(
+            self, 
+            text="Cancel",
+            command=self.destroy
+        ).pack()
+
+    def set_reminder(self):
+        time_str = self.time_var.get()
+        try:
+            # Validate time format
+            datetime.strptime(time_str, "%H:%M")
+            self.callback(time_str)
+            self.destroy()
+        except ValueError:
+            messagebox.showerror("Error", "Invalid time format. Please use HH:MM")
+    
+        
 if __name__ == "__main__":
     app = MedicationTracker()
     app.mainloop()
