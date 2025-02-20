@@ -1,8 +1,316 @@
 import tkinter as tk
-from tkinter import ttk, messagebox
-from datetime import datetime
+from tkinter import ttk
+from tkinter import messagebox, simpledialog, filedialog
+import json
+import os
+
+LARGEFONT =("Times New Roman", 35)
+SMALLFONT =("Times New Roman", 15)
+
+username = {}
+
+import tkinter as tk
+from tkinter import ttk
 import json
 
+class tkinterApp(tk.Tk):
+    def __init__(self, *args, **kwargs):
+        tk.Tk.__init__(self, *args, **kwargs)
+
+        self.title("Your App Name")
+        self.geometry("800x600")  # Set your preferred window size
+
+        # Initialize user data
+        self.username_map = self.load_username_data()
+        self.user_data = self.load_user_data()
+        self.current_user = None
+
+        container = tk.Frame(self)
+        container.pack(side="top", fill="both", expand=True)
+        container.grid_rowconfigure(0, weight=1)
+        container.grid_columnconfigure(0, weight=1)
+
+        self.frames = {}
+
+        for F in (CreateAcc, SetSecurityQs, Login, ResetPwd, Homepage):
+            frame = F(container, self)
+            self.frames[F.__name__] = frame 
+            frame.grid(row=0, column=0, sticky="nsew")
+
+        self.show_frame("Login")
+
+    def show_frame(self, page_name, *args):
+        if page_name == "Folder":
+            folder_name = args[0]
+            if folder_name not in self.frames:
+                frame = Folder(self.container, self, folder_name)
+                self.frames[folder_name] = frame
+                frame.grid(row=0, column=0, sticky="nsew")
+            self.frames[folder_name].tkraise()
+        elif page_name == "Notes":
+            folder_name, note_name = args
+            frame_name = f"Notes_{folder_name}_{note_name}"
+            if frame_name not in self.frames:
+                frame = Notes(self.container, self, folder_name, note_name)
+                self.frames[frame_name] = frame
+                frame.grid(row=0, column=0, sticky="nsew")
+            self.frames[frame_name].tkraise()
+        else:
+            frame = self.frames[page_name]
+            frame.tkraise()
+
+
+    def load_user_data(self):
+        try:
+            with open("user_data.json", "r") as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return {}
+
+    def save_user_data(self):
+        with open("user_data.json", "w") as file:
+            json.dump(self.user_data, file)
+
+    def get_current_user(self):
+        return self.current_user
+
+    def set_current_user(self, username):
+        self.current_user = username
+
+    # New methods for username map functionality
+    def load_username_data(self):
+        try:
+            with open("username_data.json", "r") as file:
+                return json.load(file)
+        except FileNotFoundError:
+            return {}
+
+    def save_username_data(self):
+        with open("username_data.json", "w") as file:
+            json.dump(self.username_map, file)
+
+    def add_user(self, username, password):
+        if username not in self.username_map:
+            self.username_map[username] = password
+            self.save_username_data()
+            return True
+        return False
+
+    def check_user(self, username, password):
+        return username in self.username_map and self.username_map[username] == password
+
+    def change_password(self, username, new_password):
+        if username in self.username_map:
+            self.username_map[username] = new_password
+            self.save_username_data()
+            return True
+        return False
+    
+        
+
+class Login(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+
+        self.configure(width=1000, height=1000)
+
+        welcome = tk.Label(self, text='Welcome', font=('calibre', 30, 'bold'))
+
+        # User input
+        self.name_var = tk.StringVar()
+        self.passw_var = tk.StringVar()
+
+        # Creating labels and entries
+        name_label = tk.Label(self, text='Username', font=('calibre', 10, 'bold'))
+        name_entry = tk.Entry(self, textvariable=self.name_var, font=('calibre', 10, 'normal'))
+
+        passw_label = tk.Label(self, text='Password', font=('calibre', 10, 'bold'))
+        passw_entry = tk.Entry(self, textvariable=self.passw_var, font=('calibre', 10, 'normal'), show='*')
+
+        # Login button
+        sub_btn = tk.Button(self, text='Login', command=self.submit)
+
+        # Placing widgets
+        welcome.place(x=400, y=50)
+        name_label.place(x=400, y=100)
+        name_entry.place(x=400, y=120)
+        passw_label.place(x=400, y=150)
+        passw_entry.place(x=400, y=170)
+        sub_btn.place(x=400, y=250)
+
+        # Navigation buttons
+        button1 = tk.Button(self, text="New User?",
+                            command=lambda: controller.show_frame("CreateAcc"))
+        button1.place(x=200, y=250)
+
+        button2 = tk.Button(self, text="Forgot Password",
+                            command=lambda: controller.show_frame("ResetPwd"))
+        button2.place(x=600, y=250)
+
+    def submit(self):
+        name = self.name_var.get()
+        password = self.passw_var.get()
+
+        # Check if the username exists and the password matches
+        if name in self.controller.user_data and self.controller.user_data[name]['password'] == password:
+            print(f"Login successful for user: {name}")
+            self.controller.set_current_user(name)
+            self.controller.show_frame("Homepage")
+        else:
+            print("Invalid username or password")
+            messagebox.showerror("Login Error", "Invalid username or password")
+
+        self.name_var.set("")
+        self.passw_var.set("")
+    
+class CreateAcc(tk.Frame):
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)
+        self.controller = controller
+
+        self.username_var = tk.StringVar()
+        self.password_var = tk.StringVar()
+        self.confirm_password_var = tk.StringVar()
+
+        # Username
+        tk.Label(self, text="Username:").pack(pady=10)
+        self.username_entry = tk.Entry(self, textvariable=self.username_var)
+        self.username_entry.pack()
+
+        # Password
+        tk.Label(self, text="Password:").pack(pady=10)
+        self.password_entry = tk.Entry(self, textvariable=self.password_var, show="*")
+        self.password_entry.pack()
+
+        # Confirm Password
+        tk.Label(self, text="Confirm Password:").pack(pady=10)
+        self.confirm_password_entry = tk.Entry(self, textvariable=self.confirm_password_var, show="*")
+        self.confirm_password_entry.pack()
+
+        # Create Account Button
+        tk.Button(self, text="Create Account", command=self.create_account).pack(pady=20)
+
+        # Back to Login Button
+        tk.Button(self, text="Back to Login", command=lambda: controller.show_frame("Login")).pack()
+
+    def create_account(self):
+        username = self.username_var.get()
+        password = self.password_var.get()
+        confirm_password = self.confirm_password_var.get()
+
+        if username and password and confirm_password:
+            if password != confirm_password:
+                messagebox.showerror("Error", "Passwords do not match")
+            elif self.controller.add_user(username, password):
+                self.controller.show_frame("SetSecurityQs")
+            else:
+                messagebox.showerror("Error", "Username already exists")
+        else:
+            messagebox.showerror("Error", "All fields must be filled")
+
+        # Clear the entry fields
+        self.username_var.set("")
+        self.password_var.set("")
+        self.confirm_password_var.set("")
+
+class SetSecurityQs(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+
+        label = tk.Label(self, text="Set Security Questions", font=LARGEFONT)
+        label.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
+
+        label2 = tk.Label(self, text="Answer the following security questions:", font=SMALLFONT)
+        label2.grid(row=1, column=0, columnspan=2, padx=10, pady=10)
+
+        # Security questions
+        questions = [
+            "What is your first pet's name?",
+            "What is your mother's maiden name?",
+            "In which city were you born?"
+        ]
+
+        self.entries = []
+        for i, question in enumerate(questions):
+            q_label = tk.Label(self, text=question, font=('calibre', 10, 'bold'))
+            q_label.grid(row=i+2, column=0, padx=10, pady=5, sticky='e')
+
+            q_entry = tk.Entry(self, font=('calibre', 10, 'normal'))
+            q_entry.grid(row=i+2, column=1, padx=10, pady=5, sticky='w')
+            self.entries.append(q_entry)
+
+        submit_button = tk.Button(self, text="Submit", command=self.submit)
+        submit_button.grid(row=5, column=0, columnspan=2, padx=10, pady=20)
+
+    def submit(self):
+        # Get the answers from entry fields
+        answers = [entry.get() for entry in self.entries]
+
+        # Get the current user (you need to implement this based on your login system)
+        current_user = self.controller.get_current_user()
+
+        # Update the username map with security questions
+        if current_user in self.controller.username_map:
+            self.controller.username_map[current_user]['security_questions'] = answers
+            print(f"Security questions updated for user: {current_user}")
+
+            # Clear the entry fields
+            for entry in self.entries:
+                entry.delete(0, tk.END)
+
+            # Switch to the Login frame
+            self.controller.show_frame("Login")
+        else:
+            print("Error: User not found in the system.")
+        
+class ResetPwd(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+
+        # Title label
+        label = tk.Label(self, text="Reset Password", font=LARGEFONT)
+        label.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
+
+        # Password entry fields
+        self.password_entry = tk.Entry(self, show="*")
+        self.password_entry.grid(row=1, column=1, padx=10, pady=10)
+        label1 = tk.Label(self, text="Set password:", font=SMALLFONT)
+        label1.grid(row=1, column=0, padx=10, pady=10)
+
+        self.confirm_password_entry = tk.Entry(self, show="*")
+        self.confirm_password_entry.grid(row=2, column=1, padx=10, pady=10)
+        label2 = tk.Label(self, text="Confirm password:", font=SMALLFONT)
+        label2.grid(row=2, column=0, padx=10, pady=10)
+
+        # Error label (hidden by default)
+        self.error_label = tk.Label(self, text="Error: passwords do not match", font=SMALLFONT, fg="red")
+        self.error_label.grid(row=3, column=0, columnspan=2, padx=10, pady=10)
+        self.error_label.grid_remove()  # Hide the error label initially
+
+        # Submit button
+        button1 = tk.Button(self, text="Submit", command=self.reset_password)
+        button1.grid(row=4, column=0, columnspan=2, padx=10, pady=10)
+
+    def reset_password(self):
+        password = self.password_entry.get()
+        confirm_password = self.confirm_password_entry.get()
+
+        if password == confirm_password:
+            # Passwords match, proceed with reset
+            # Here you would typically update the password in your database
+            print("Password reset successful")
+            self.error_label.grid_remove()  # Hide error message if it was shown
+            # You can add code here to update the username map or database
+            # Then, switch to the Login frame
+            self.controller.show_frame("Login")
+        else:
+            # Passwords don't match, show error message
+            self.error_label.grid()  # Show the error label
+        
+        
 class MedicationTracker(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -121,112 +429,7 @@ class MedicationTracker(tk.Tk):
         except FileNotFoundError:
             self.medications = {}
 
-class Login(tk.Frame):
-    def __init__(self, parent, controller):
-        super().__init__(parent)
-        self.controller = controller
 
-        self.configure(width=1000, height=1000)
-
-        welcome = tk.Label(self, text='Welcome', font=('calibre', 30, 'bold'))
-
-        # User input
-        self.name_var = tk.StringVar()
-        self.passw_var = tk.StringVar()
-
-        # Creating labels and entries
-        name_label = tk.Label(self, text='Username', font=('calibre', 10, 'bold'))
-        name_entry = tk.Entry(self, textvariable=self.name_var, font=('calibre', 10, 'normal'))
-
-        passw_label = tk.Label(self, text='Password', font=('calibre', 10, 'bold'))
-        passw_entry = tk.Entry(self, textvariable=self.passw_var, font=('calibre', 10, 'normal'), show='*')
-
-        # Login button
-        sub_btn = tk.Button(self, text='Login', command=self.submit)
-
-        # Placing widgets
-        welcome.place(x=400, y=50)
-        name_label.place(x=400, y=100)
-        name_entry.place(x=400, y=120)
-        passw_label.place(x=400, y=150)
-        passw_entry.place(x=400, y=170)
-        sub_btn.place(x=400, y=250)
-
-        # Navigation buttons
-        button1 = tk.Button(self, text="New User?",
-                            command=lambda: controller.show_frame("CreateAcc"))
-        button1.place(x=200, y=250)
-
-        button2 = tk.Button(self, text="Forgot Password",
-                            command=lambda: controller.show_frame("ResetPwd"))
-        button2.place(x=600, y=250)
-
-    def submit(self):
-        name = self.name_var.get()
-        password = self.passw_var.get()
-
-        # Check if the username exists and the password matches
-        if name in self.controller.user_data and self.controller.user_data[name]['password'] == password:
-            print(f"Login successful for user: {name}")
-            self.controller.set_current_user(name)
-            self.controller.show_frame("Homepage")
-        else:
-            print("Invalid username or password")
-            messagebox.showerror("Login Error", "Invalid username or password")
-
-        self.name_var.set("")
-        self.passw_var.set("")
-    
-class CreateAcc(tk.Frame):
-    def __init__(self, parent, controller):
-        tk.Frame.__init__(self, parent)
-        self.controller = controller
-
-        self.username_var = tk.StringVar()
-        self.password_var = tk.StringVar()
-        self.confirm_password_var = tk.StringVar()
-
-        # Username
-        tk.Label(self, text="Username:").pack(pady=10)
-        self.username_entry = tk.Entry(self, textvariable=self.username_var)
-        self.username_entry.pack()
-
-        # Password
-        tk.Label(self, text="Password:").pack(pady=10)
-        self.password_entry = tk.Entry(self, textvariable=self.password_var, show="*")
-        self.password_entry.pack()
-
-        # Confirm Password
-        tk.Label(self, text="Confirm Password:").pack(pady=10)
-        self.confirm_password_entry = tk.Entry(self, textvariable=self.confirm_password_var, show="*")
-        self.confirm_password_entry.pack()
-
-        # Create Account Button
-        tk.Button(self, text="Create Account", command=self.create_account).pack(pady=20)
-
-        # Back to Login Button
-        tk.Button(self, text="Back to Login", command=lambda: controller.show_frame("Login")).pack()
-
-    def create_account(self):
-        username = self.username_var.get()
-        password = self.password_var.get()
-        confirm_password = self.confirm_password_var.get()
-
-        if username and password and confirm_password:
-            if password != confirm_password:
-                messagebox.showerror("Error", "Passwords do not match")
-            elif self.controller.add_user(username, password):
-                self.controller.show_frame("SetSecurityQs")
-            else:
-                messagebox.showerror("Error", "Username already exists")
-        else:
-            messagebox.showerror("Error", "All fields must be filled")
-
-        # Clear the entry fields
-        self.username_var.set("")
-        self.password_var.set("")
-        self.confirm_password_var.set("")
-        
         
 class ReminderSystem:
     def __init__(self, parent):
