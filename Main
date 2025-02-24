@@ -3,6 +3,9 @@ from tkinter import ttk
 from tkinter import messagebox, simpledialog, filedialog
 import json
 import os
+from datetime import datetime, timedelta
+import calendar
+
 
 LARGEFONT =("Times New Roman", 35)
 SMALLFONT =("Times New Roman", 15)
@@ -18,72 +21,59 @@ class tkinterApp(tk.Tk):
         tk.Tk.__init__(self, *args, **kwargs)
 
         self.title("Your App Name")
-        self.geometry("800x600")  # Set your preferred window size
+        self.geometry("800x600")
 
-        # Initialize user data
-        self.username_map = self.load_username_data()
-        self.user_data = self.load_user_data()
+        # Initialize empty dictionaries first
+        self.username_map = {}
+        self.user_data = {}
         self.current_user = None
 
-        container = tk.Frame(self)
-        container.pack(side="top", fill="both", expand=True)
-        container.grid_rowconfigure(0, weight=1)
-        container.grid_columnconfigure(0, weight=1)
+        # Load data if files exist
+        self.load_username_data()
+        self.load_user_data()
+
+        # Create the container
+        self.container = tk.Frame(self)
+        self.container.pack(side="top", fill="both", expand=True)
+        self.container.grid_rowconfigure(0, weight=1)
+        self.container.grid_columnconfigure(0, weight=1)
 
         self.frames = {}
 
-        for F in (CreateAcc, SetSecurityQs, Login, ResetPwd, Homepage):
-            frame = F(container, self)
+        # Initialize all frames
+        for F in (CreateAcc, Login, ResetPwd, Homepage, LogHistory):
+            frame = F(self.container, self)
             self.frames[F.__name__] = frame 
             frame.grid(row=0, column=0, sticky="nsew")
 
         self.show_frame("Login")
 
-    def show_frame(self, page_name, *args):
-        if page_name == "Folder":
-            folder_name = args[0]
-            if folder_name not in self.frames:
-                frame = Folder(self.container, self, folder_name)
-                self.frames[folder_name] = frame
-                frame.grid(row=0, column=0, sticky="nsew")
-            self.frames[folder_name].tkraise()
-        elif page_name == "Notes":
-            folder_name, note_name = args
-            frame_name = f"Notes_{folder_name}_{note_name}"
-            if frame_name not in self.frames:
-                frame = Notes(self.container, self, folder_name, note_name)
-                self.frames[frame_name] = frame
-                frame.grid(row=0, column=0, sticky="nsew")
-            self.frames[frame_name].tkraise()
-        else:
-            frame = self.frames[page_name]
-            frame.tkraise()
-
+    def show_frame(self, page_name):
+        """Show a frame for the given page name"""
+        frame = self.frames[page_name]
+        frame.tkraise()
 
     def load_user_data(self):
         try:
             with open("user_data.json", "r") as file:
-                return json.load(file)
-        except FileNotFoundError:
-            return {}
+                data = file.read()
+                if data:
+                    self.user_data = json.loads(data)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.save_user_data()
+
+    def load_username_data(self):
+        try:
+            with open("username_data.json", "r") as file:
+                data = file.read()
+                if data:
+                    self.username_map = json.loads(data)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.save_username_data()
 
     def save_user_data(self):
         with open("user_data.json", "w") as file:
             json.dump(self.user_data, file)
-
-    def get_current_user(self):
-        return self.current_user
-
-    def set_current_user(self, username):
-        self.current_user = username
-
-    # New methods for username map functionality
-    def load_username_data(self):
-        try:
-            with open("username_data.json", "r") as file:
-                return json.load(file)
-        except FileNotFoundError:
-            return {}
 
     def save_username_data(self):
         with open("username_data.json", "w") as file:
@@ -91,21 +81,21 @@ class tkinterApp(tk.Tk):
 
     def add_user(self, username, password):
         if username not in self.username_map:
+            self.user_data[username] = {
+                'password': password,
+                'security_questions': []
+            }
             self.username_map[username] = password
+            self.save_user_data()
             self.save_username_data()
             return True
         return False
 
-    def check_user(self, username, password):
-        return username in self.username_map and self.username_map[username] == password
+    def get_current_user(self):
+        return self.current_user
 
-    def change_password(self, username, new_password):
-        if username in self.username_map:
-            self.username_map[username] = new_password
-            self.save_username_data()
-            return True
-        return False
-    
+    def set_current_user(self, username):
+        self.current_user = username
         
 
 class Login(tk.Frame):
@@ -203,7 +193,7 @@ class CreateAcc(tk.Frame):
             if password != confirm_password:
                 messagebox.showerror("Error", "Passwords do not match")
             elif self.controller.add_user(username, password):
-                self.controller.show_frame("SetSecurityQs")
+                self.controller.set_current_user(username)  # Set current user
             else:
                 messagebox.showerror("Error", "Username already exists")
         else:
@@ -214,56 +204,8 @@ class CreateAcc(tk.Frame):
         self.password_var.set("")
         self.confirm_password_var.set("")
 
-class SetSecurityQs(tk.Frame):
-    def __init__(self, parent, controller):
-        super().__init__(parent)
-        self.controller = controller
 
-        label = tk.Label(self, text="Set Security Questions", font=LARGEFONT)
-        label.grid(row=0, column=0, columnspan=2, padx=10, pady=10)
 
-        label2 = tk.Label(self, text="Answer the following security questions:", font=SMALLFONT)
-        label2.grid(row=1, column=0, columnspan=2, padx=10, pady=10)
-
-        # Security questions
-        questions = [
-            "What is your first pet's name?",
-            "What is your mother's maiden name?",
-            "In which city were you born?"
-        ]
-
-        self.entries = []
-        for i, question in enumerate(questions):
-            q_label = tk.Label(self, text=question, font=('calibre', 10, 'bold'))
-            q_label.grid(row=i+2, column=0, padx=10, pady=5, sticky='e')
-
-            q_entry = tk.Entry(self, font=('calibre', 10, 'normal'))
-            q_entry.grid(row=i+2, column=1, padx=10, pady=5, sticky='w')
-            self.entries.append(q_entry)
-
-        submit_button = tk.Button(self, text="Submit", command=self.submit)
-        submit_button.grid(row=5, column=0, columnspan=2, padx=10, pady=20)
-
-    def submit(self):
-        # Get the answers from entry fields
-        answers = [entry.get() for entry in self.entries]
-
-        # Get the current user (you need to implement this based on your login system)
-        current_user = self.controller.get_current_user()
-
-        # Update the username map with security questions
-        if current_user in self.controller.username_map:
-            self.controller.username_map[current_user]['security_questions'] = answers
-            print(f"Security questions updated for user: {current_user}")
-
-            # Clear the entry fields
-            for entry in self.entries:
-                entry.delete(0, tk.END)
-
-            # Switch to the Login frame
-            self.controller.show_frame("Login")
-        else:
-            print("Error: User not found in the system.")
         
 class ResetPwd(tk.Frame):
     def __init__(self, parent, controller):
@@ -310,7 +252,88 @@ class ResetPwd(tk.Frame):
             # Passwords don't match, show error message
             self.error_label.grid()  # Show the error label
         
-        
+class Homepage(tk.Frame):
+    def __init__(self, parent, controller):
+        tk.Frame.__init__(self, parent)  # Changed from super().__init__
+        self.controller = controller
+
+        # Welcome text
+        welcome_frame = tk.Frame(self)
+        welcome_frame.pack(pady=50)
+
+        welcome_text = tk.Label(welcome_frame, 
+                              text="Welcome!", 
+                              font=("Times New Roman", 30, "bold"))
+        welcome_text.pack()
+
+        # Button frame
+        button_frame = tk.Frame(self)
+        button_frame.pack(expand=True)
+
+        # Button style - removed bg and fg for compatibility
+        button_style = {
+            'width': 20,
+            'height': 2,
+            'font': ('Times New Roman', 16),
+            'relief': 'raised'
+        }
+
+        # Create buttons with explicit pack() calls
+        self.medications_btn = tk.Button(
+            button_frame, 
+            text="Medications",
+            command=self.open_medications,
+            **button_style
+        )
+        self.medications_btn.pack(pady=20)
+
+        self.reminders_btn = tk.Button(
+            button_frame, 
+            text="Reminders",
+            command=self.open_reminders,
+            **button_style
+        )
+        self.reminders_btn.pack(pady=20)
+
+        self.log_history_btn = tk.Button(
+            button_frame, 
+            text="Log & History",
+            command=self.open_log_history,
+            **button_style
+        )
+        self.log_history_btn.pack(pady=20)
+
+        # Logout button
+        self.logout_btn = tk.Button(
+            self, 
+            text="Logout",
+            command=self.logout,
+            font=('Times New Roman', 12),
+            width=10
+        )
+        self.logout_btn.pack(side='bottom', pady=20)
+
+    def open_medications(self):
+        medications_window = tk.Toplevel(self)
+        medications_window.title("Medications")
+        medications_window.geometry("800x600")
+        MedicationTracker(medications_window)
+
+    def open_reminders(self):
+        reminders_window = tk.Toplevel(self)
+        reminders_window.title("Reminders")
+        reminders_window.geometry("800x600")
+        ReminderSystem(reminders_window)
+
+    def open_log_history(self):
+        # Simply show the LogHistory frame
+        self.controller.show_frame("LogHistory")
+
+    def logout(self):
+        if messagebox.askyesno("Logout", "Are you sure you want to logout?"):
+            self.controller.set_current_user(None)
+            self.controller.show_frame("Login")
+            
 class MedicationTracker(tk.Tk):
     def __init__(self):
         super().__init__()
@@ -338,42 +361,72 @@ class MedicationTracker(tk.Tk):
         nav = ttk.Frame(self.container)
         nav.pack(fill="x", padx=5, pady=5)
 
-        ttk.Button(nav, text="Dashboard", command=self.show_dashboard).pack(side="left", padx=5)
-        ttk.Button(nav, text="Add Medication", command=self.show_add_medication).pack(side="left", padx=5)
-        ttk.Button(nav, text="View History", command=self.show_history).pack(side="left", padx=5)
-
     def show_dashboard(self):
         # Clear current content
         for widget in self.content.winfo_children():
             widget.destroy()
+    
+        # Welcome header
+        ttk.Label(self.content, text="Medication Dashboard", font=("Helvetica", 24, "bold")).pack(pady=20)
+    
+        # Create button frame
+        button_frame = ttk.Frame(self.content)
+        button_frame.pack(expand=True, fill="both", padx=50, pady=30)
+    
+        # Button style
+        button_style = {
+            'width': 20,
+            'padding': 20
+        }
+    
+        # Create and style buttons
+        medications_btn = ttk.Button(
+            button_frame,
+            text="Medications",
+            command=self.show_add_medication,
+            **button_style
+        )
+        medications_btn.pack(pady=20, fill='x')
+    
+        log_history_btn = ttk.Button(
+            button_frame,
+            text="Log & History",
+            command=self.show_history,
+            **button_style
+        )
+        log_history_btn.pack(pady=20, fill='x')
+    
+        reminders_btn = ttk.Button(
+            button_frame,
+            text="Reminders",
+            command=lambda: self.show_reminders(),  # Add this method if not exists
+            **button_style
+        )
+        reminders_btn.pack(pady=20, fill='x')
 
-        ttk.Label(self.content, text="Your Medications", font=("Helvetica", 16)).pack(pady=10)
-
-        # Create medication list
-        if self.medications:
-            for med_name, med_info in self.medications.items():
-                med_frame = ttk.Frame(self.content)
-                med_frame.pack(fill="x", pady=5)
-
-                ttk.Label(med_frame, text=f"{med_name} - {med_info['dosage']}").pack(side="left")
-                ttk.Button(med_frame, text="Take", 
-                          command=lambda m=med_name: self.log_medication(m)).pack(side="right")
-
+    # Add this method if not already in your class
+    def show_reminders(self):
+        # Clear current content
+        for widget in self.content.winfo_children():
+            widget.destroy()
+    
+        # Create reminder system
+        reminder_system = ReminderSystem(self.content)
     def show_add_medication(self):
         # Clear current content
         for widget in self.content.winfo_children():
             widget.destroy()
-
+    
         ttk.Label(self.content, text="Add New Medication", font=("Helvetica", 16)).pack(pady=10)
-
+    
         # Create form
         form = ttk.Frame(self.content)
         form.pack(pady=10)
-
+    
         ttk.Label(form, text="Medication Name:").grid(row=0, column=0, pady=5)
         name_entry = ttk.Entry(form)
         name_entry.grid(row=0, column=1, pady=5)
-
+    
         ttk.Label(form, text="Dosage:").grid(row=1, column=0, pady=5)
         dosage_entry = ttk.Entry(form)
         dosage_entry.grid(row=1, column=1, pady=5)
@@ -381,7 +434,7 @@ class MedicationTracker(tk.Tk):
         def save_medication():
             name = name_entry.get()
             dosage = dosage_entry.get()
-
+    
             if name and dosage:
                 self.medications[name] = {
                     "dosage": dosage,
@@ -392,17 +445,28 @@ class MedicationTracker(tk.Tk):
                 self.show_dashboard()
             else:
                 messagebox.showerror("Error", "Please fill all fields")
-
+    
         ttk.Button(form, text="Save", command=save_medication).grid(row=2, column=0, columnspan=2, pady=10)
+    
+        # Add back button
+        ttk.Button(form, text="Back to Dashboard", command=self.show_dashboard).grid(row=3, column=0, columnspan=2, pady=10)
 
     def show_history(self):
-        # Clear current content
+    # Clear current content
         for widget in self.content.winfo_children():
             widget.destroy()
 
         ttk.Label(self.content, text="Medication History", font=("Helvetica", 16)).pack(pady=10)
 
-        # Add history view implementation here
+    # Create medication list
+        if self.medications:
+            for med_name, med_info in self.medications.items():
+                med_frame = ttk.Frame(self.content)
+                med_frame.pack(fill="x", pady=5)
+    
+                ttk.Label(med_frame, text=f"{med_name} - {med_info['dosage']}").pack(side="left")
+                ttk.Button(med_frame, text="Take", 
+                command=lambda m=med_name: self.log_medication(m)).pack(side="right")
 
     def log_medication(self, medication_name):
         # Log when medication is taken
@@ -430,6 +494,152 @@ class MedicationTracker(tk.Tk):
             self.medications = {}
 
 
+class LogHistory(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.current_date = datetime.now()
+        self.view_mode = "Daily Log"  # Default view mode
+
+        # Create main container
+        self.create_header()
+        self.create_calendar_view()
+        self.create_bottom_buttons()
+
+    def create_header(self):
+        # Header frame
+        header_frame = ttk.Frame(self)
+        header_frame.pack(fill="x", pady=10)
+
+        # Back button
+        back_btn = ttk.Button(
+            header_frame, 
+            text="← Back to Dashboard",
+            command=lambda: self.controller.show_frame("Homepage")  # Note: "Homepage" not "Dashboard"
+        )
+    
+        back_btn.pack(side="left", padx=10)
+
+        # Navigation frame
+        nav_frame = ttk.Frame(header_frame)
+        nav_frame.pack(side="top", fill="x", padx=10)
+
+        # Previous button
+        self.prev_btn = ttk.Button(
+            nav_frame, 
+            text="<",
+            command=self.previous_date
+        )
+        self.prev_btn.pack(side="left", padx=5)
+
+        # Date label
+        self.date_label = ttk.Label(
+            nav_frame,
+            text=self.current_date.strftime("%B %d, %Y"),
+            font=("Helvetica", 12, "bold")
+        )
+        self.date_label.pack(side="left", padx=20)
+
+        # Next button
+        self.next_btn = ttk.Button(
+            nav_frame, 
+            text=">",
+            command=self.next_date
+        )
+        self.next_btn.pack(side="left", padx=5)
+
+        # View mode dropdown
+        self.view_var = tk.StringVar(value=self.view_mode)
+        view_menu = ttk.OptionMenu(
+            nav_frame,
+            self.view_var,
+            self.view_mode,
+            "Daily Log", "Weekly Log", "Monthly Log",
+            command=self.change_view_mode
+        )
+        view_menu.pack(side="right", padx=10)
+
+    def create_calendar_view(self):
+        self.calendar_frame = ttk.Frame(self)
+        self.calendar_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        self.update_calendar_view()
+
+    def create_bottom_buttons(self):
+        bottom_frame = ttk.Frame(self)
+        bottom_frame.pack(side="bottom", fill="x", pady=10)
+
+        report_btn = ttk.Button(
+            bottom_frame,
+            text="Report Side Effects",
+            command=self.show_side_effects_page
+        )
+        report_btn.pack(side="right", padx=10)
+
+    def update_calendar_view(self):
+        # Clear existing content
+        for widget in self.calendar_frame.winfo_children():
+            widget.destroy()
+
+        # Header for medication list
+        ttk.Label(
+            self.calendar_frame,
+            text="Medication",
+            font=("Helvetica", 11, "bold")
+        ).grid(row=0, column=0, padx=5, pady=5, sticky="w")
+
+        ttk.Label(
+            self.calendar_frame,
+            text="Dosage",
+            font=("Helvetica", 11, "bold")
+        ).grid(row=0, column=1, padx=5, pady=5, sticky="w")
+
+        # Example medications (replace with actual data from your system)
+        medications = [
+            {"name": "Calcium", "dosage": "1 tablet, after meals"},
+            {"name": "Vitamin D", "dosage": "2 tablets, morning"}
+        ]
+
+        for i, med in enumerate(medications, 1):
+            ttk.Label(
+                self.calendar_frame,
+                text=med["name"]
+            ).grid(row=i, column=0, padx=5, pady=2, sticky="w")
+
+            ttk.Label(
+                self.calendar_frame,
+                text=med["dosage"]
+            ).grid(row=i, column=1, padx=5, pady=2, sticky="w")
+
+    def previous_date(self):
+        if self.view_mode == "Daily Log":
+            self.current_date -= timedelta(days=1)
+        elif self.view_mode == "Weekly Log":
+            self.current_date -= timedelta(weeks=1)
+        else:  # Monthly Log
+            first_day = self.current_date.replace(day=1)
+            self.current_date = first_day - timedelta(days=1)
+        self.update_view()
+
+    def next_date(self):
+        if self.view_mode == "Daily Log":
+            self.current_date += timedelta(days=1)
+        elif self.view_mode == "Weekly Log":
+            self.current_date += timedelta(weeks=1)
+        else:  # Monthly Log
+            self.current_date = (self.current_date.replace(day=1) + timedelta(days=32)).replace(day=1)
+        self.update_view()
+
+    def change_view_mode(self, mode):
+        self.view_mode = mode
+        self.update_view()
+
+    def update_view(self):
+        self.date_label.config(text=self.current_date.strftime("%B %d, %Y"))
+        self.update_calendar_view()
+
+    def show_side_effects_page(self):
+        # Implement the side effects page navigation
+        self.controller.show_frame("SideEffects")  # You'll need to create this page
         
 class ReminderSystem:
     def __init__(self, parent):
@@ -606,5 +816,5 @@ class AddReminderDialog(tk.Toplevel):
     
         
 if __name__ == "__main__":
-    app = MedicationTracker()
+    app = tkinterApp()
     app.mainloop()
