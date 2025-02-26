@@ -41,7 +41,7 @@ class tkinterApp(tk.Tk):
         self.frames = {}
 
         # Initialize all frames
-        for F in (CreateAcc, Login, ResetPwd, Homepage, LogHistory):
+        for F in (CreateAcc, Login, ResetPwd, Homepage, LogHistory, SideEffects):  # Added SideEffects
             frame = F(self.container, self)
             self.frames[F.__name__] = frame 
             frame.grid(row=0, column=0, sticky="nsew")
@@ -52,6 +52,15 @@ class tkinterApp(tk.Tk):
         """Show a frame for the given page name"""
         frame = self.frames[page_name]
         frame.tkraise()
+        # Update welcome text if showing Homepage
+        if page_name == "Homepage" and hasattr(frame, "update_welcome_text"):
+            frame.update_welcome_text()
+        # Refresh LogHistory if showing that page
+        if page_name == "LogHistory" and hasattr(frame, "refresh_data"):
+            frame.refresh_data()
+        # Refresh SideEffects if showing that page
+        if page_name == "SideEffects" and hasattr(frame, "refresh_data"):
+            frame.refresh_data()
 
     def load_user_data(self):
         try:
@@ -193,7 +202,8 @@ class CreateAcc(tk.Frame):
             if password != confirm_password:
                 messagebox.showerror("Error", "Passwords do not match")
             elif self.controller.add_user(username, password):
-                self.controller.set_current_user(username)  # Set current user
+                messagebox.showinfo("Success", "Account created successfully!")
+                self.controller.show_frame("Login")  # Navigate back to login page
             else:
                 messagebox.showerror("Error", "Username already exists")
         else:
@@ -317,7 +327,10 @@ class Homepage(tk.Frame):
         medications_window = tk.Toplevel(self)
         medications_window.title("Medications")
         medications_window.geometry("800x600")
-        MedicationTracker(medications_window)
+        try:
+            MedicationTracker(medications_window)
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not open Medications: {str(e)}")
 
     def open_reminders(self):
         reminders_window = tk.Toplevel(self)
@@ -334,150 +347,142 @@ class Homepage(tk.Frame):
             self.controller.set_current_user(None)
             self.controller.show_frame("Login")
             
-class MedicationTracker(tk.Tk):
-    def __init__(self):
-        super().__init__()
-        self.title("Medication Tracker")
-        self.geometry("800x600")
-
-        # Initialize data storage
+class MedicationTracker:
+    def __init__(self, parent):
+        self.parent = parent
         self.medications = {}
+
+        # Create an empty JSON file if it doesn't exist
+        if not os.path.exists("medication_data.json"):
+            with open("medication_data.json", "w") as f:
+                json.dump({}, f)
+
+        # Load existing data
         self.load_data()
 
-        # Create main container
-        self.container = ttk.Frame(self)
-        self.container.pack(fill="both", expand=True)
+        # Main container
+        self.main_frame = ttk.Frame(parent)
+        self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
 
-        # Create navigation
-        self.create_navigation()
+        # Header frame
+        self.header_frame = ttk.Frame(self.main_frame)
+        self.header_frame.pack(fill="x", pady=(0, 20))
 
-        # Create main content area
-        self.content = ttk.Frame(self.container)
-        self.content.pack(fill="both", expand=True, padx=10, pady=10)
+        # Back button
+        self.back_btn = ttk.Button(
+            self.header_frame,
+            text="← Back to Dashboard",
+            command=self.go_back
+        )
+        self.back_btn.pack(side="left")
 
-        self.show_dashboard()
-
-    def create_navigation(self):
-        nav = ttk.Frame(self.container)
-        nav.pack(fill="x", padx=5, pady=5)
-
-    def show_dashboard(self):
-        # Clear current content
-        for widget in self.content.winfo_children():
-            widget.destroy()
-    
-        # Welcome header
-        ttk.Label(self.content, text="Medication Dashboard", font=("Helvetica", 24, "bold")).pack(pady=20)
-    
-        # Create button frame
-        button_frame = ttk.Frame(self.content)
-        button_frame.pack(expand=True, fill="both", padx=50, pady=30)
-    
-        # Button style
-        button_style = {
-            'width': 20,
-            'padding': 20
-        }
-    
-        # Create and style buttons
-        medications_btn = ttk.Button(
-            button_frame,
+        # Title
+        ttk.Label(
+            self.header_frame,
             text="Medications",
-            command=self.show_add_medication,
-            **button_style
-        )
-        medications_btn.pack(pady=20, fill='x')
-    
-        log_history_btn = ttk.Button(
-            button_frame,
-            text="Log & History",
-            command=self.show_history,
-            **button_style
-        )
-        log_history_btn.pack(pady=20, fill='x')
-    
-        reminders_btn = ttk.Button(
-            button_frame,
-            text="Reminders",
-            command=lambda: self.show_reminders(),  # Add this method if not exists
-            **button_style
-        )
-        reminders_btn.pack(pady=20, fill='x')
+            font=("Helvetica", 16, "bold")
+        ).pack(side="left", padx=20)
 
-    # Add this method if not already in your class
-    def show_reminders(self):
-        # Clear current content
-        for widget in self.content.winfo_children():
-            widget.destroy()
-    
-        # Create reminder system
-        reminder_system = ReminderSystem(self.content)
-    def show_add_medication(self):
-        # Clear current content
-        for widget in self.content.winfo_children():
-            widget.destroy()
-    
-        ttk.Label(self.content, text="Add New Medication", font=("Helvetica", 16)).pack(pady=10)
-    
-        # Create form
-        form = ttk.Frame(self.content)
-        form.pack(pady=10)
-    
-        ttk.Label(form, text="Medication Name:").grid(row=0, column=0, pady=5)
-        name_entry = ttk.Entry(form)
-        name_entry.grid(row=0, column=1, pady=5)
-    
-        ttk.Label(form, text="Dosage:").grid(row=1, column=0, pady=5)
-        dosage_entry = ttk.Entry(form)
-        dosage_entry.grid(row=1, column=1, pady=5)
+        # Search frame
+        self.search_frame = ttk.Frame(self.main_frame)
+        self.search_frame.pack(fill="x", pady=(0, 20))
 
-        def save_medication():
-            name = name_entry.get()
-            dosage = dosage_entry.get()
-    
-            if name and dosage:
-                self.medications[name] = {
-                    "dosage": dosage,
-                    "created_date": datetime.now().strftime("%Y-%m-%d")
-                }
-                self.save_data()
-                messagebox.showinfo("Success", "Medication added successfully!")
-                self.show_dashboard()
-            else:
-                messagebox.showerror("Error", "Please fill all fields")
-    
-        ttk.Button(form, text="Save", command=save_medication).grid(row=2, column=0, columnspan=2, pady=10)
-    
-        # Add back button
-        ttk.Button(form, text="Back to Dashboard", command=self.show_dashboard).grid(row=3, column=0, columnspan=2, pady=10)
+        # Search entry
+        self.search_var = tk.StringVar()
+        self.search_var.trace('w', self.filter_medications)
+        ttk.Label(
+            self.search_frame,
+            text="Search: "
+        ).pack(side="left")
+        self.search_entry = ttk.Entry(
+            self.search_frame,
+            textvariable=self.search_var
+        )
+        self.search_entry.pack(side="left", fill="x", expand=True)
 
-    def show_history(self):
-    # Clear current content
-        for widget in self.content.winfo_children():
+        # Add Medication button
+        self.add_btn = ttk.Button(
+            self.search_frame,
+            text="+ Add Medication",
+            command=self.show_add_medication
+        )
+        self.add_btn.pack(side="right", padx=10)
+
+        # Medications list frame
+        self.list_frame = ttk.Frame(self.main_frame)
+        self.list_frame.pack(fill="both", expand=True)
+
+        # Create headers
+        self.create_list_headers()
+
+        # Display medications
+        self.update_medications_list()
+
+    def create_list_headers(self):
+        # Clear existing headers
+        for widget in self.list_frame.grid_slaves():
             widget.destroy()
 
-        ttk.Label(self.content, text="Medication History", font=("Helvetica", 16)).pack(pady=10)
+        headers = ["Medication Name", "Dosage", "When to Take", "Reminders"]
+        for i, header in enumerate(headers):
+            ttk.Label(
+                self.list_frame,
+                text=header,
+                font=("Helvetica", 11, "bold")
+            ).grid(row=0, column=i, padx=5, pady=5, sticky="w")
 
-    # Create medication list
-        if self.medications:
-            for med_name, med_info in self.medications.items():
-                med_frame = ttk.Frame(self.content)
-                med_frame.pack(fill="x", pady=5)
-    
-                ttk.Label(med_frame, text=f"{med_name} - {med_info['dosage']}").pack(side="left")
-                ttk.Button(med_frame, text="Take", 
-                command=lambda m=med_name: self.log_medication(m)).pack(side="right")
+    def update_medications_list(self):
+        # Clear existing items (except headers)
+        for widget in self.list_frame.grid_slaves():
+            if int(widget.grid_info()["row"]) > 0:
+                widget.destroy()
 
-    def log_medication(self, medication_name):
-        # Log when medication is taken
-        if 'log' not in self.medications[medication_name]:
-            self.medications[medication_name]['log'] = []
+        # Filter medications based on search
+        search_term = self.search_var.get().lower()
+        filtered_meds = {k: v for k, v in self.medications.items() 
+                        if search_term in k.lower()}
 
-        self.medications[medication_name]['log'].append(
-            datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-        )
+        # Display medications
+        for i, (med_name, med_info) in enumerate(filtered_meds.items(), 1):
+            ttk.Label(
+                self.list_frame,
+                text=med_name
+            ).grid(row=i, column=0, padx=5, pady=2, sticky="w")
+
+            ttk.Label(
+                self.list_frame,
+                text=med_info.get('dosage', '')
+            ).grid(row=i, column=1, padx=5, pady=2, sticky="w")
+
+            ttk.Label(
+                self.list_frame,
+                text=med_info.get('time', '')
+            ).grid(row=i, column=2, padx=5, pady=2, sticky="w")
+
+            reminder_status = "Yes" if med_info.get('reminders_enabled', False) else "No"
+            ttk.Label(
+                self.list_frame,
+                text=reminder_status
+            ).grid(row=i, column=3, padx=5, pady=2, sticky="w")
+
+    def add_medication_callback(self, medication_data):
+        self.medications[medication_data['name']] = {
+            'dosage': medication_data['dosage'],
+            'time': medication_data['time'],
+            'reminders_enabled': medication_data['reminders_enabled']
+        }
         self.save_data()
-        messagebox.showinfo("Success", f"{medication_name} logged successfully!")
+        self.update_medications_list()
+
+    def show_add_medication(self):
+        add_window = tk.Toplevel(self.parent)
+        AddMedicationForm(add_window, self.add_medication_callback)
+
+    def filter_medications(self, *args):
+        self.update_medications_list()
+
+    def go_back(self):
+        self.parent.destroy()
 
     def save_data(self):
         try:
@@ -489,22 +494,165 @@ class MedicationTracker(tk.Tk):
     def load_data(self):
         try:
             with open("medication_data.json", "r") as f:
-                self.medications = json.load(f)
-        except FileNotFoundError:
+                data = f.read()
+                if data:
+                    self.medications = json.loads(data)
+                else:
+                    self.medications = {}
+        except (FileNotFoundError, json.JSONDecodeError):
             self.medications = {}
+            with open("medication_data.json", "w") as f:
+                json.dump({}, f)
 
 
+class AddMedicationForm:
+    def __init__(self, parent, callback):
+        self.window = parent
+        self.callback = callback
+
+        # Clear any existing widgets in the window
+        for widget in self.window.winfo_children():
+            widget.destroy()
+
+        # Set window title and size
+        self.window.title("Add New Medication")
+        self.window.geometry("400x500")
+
+        # Main frame
+        self.frame = ttk.Frame(self.window, padding="20")
+        self.frame.pack(fill="both", expand=True)
+
+        # Title
+        ttk.Label(
+            self.frame,
+            text="New Medication",
+            font=("Helvetica", 16, "bold")
+        ).pack(pady=(0, 20))
+
+        # Back button
+        self.back_btn = ttk.Button(
+            self.frame,
+            text="← Back",
+            command=self.window.destroy
+        )
+        self.back_btn.pack(anchor="w", pady=(0, 20))
+
+        # Medication Name
+        ttk.Label(self.frame, text="Medication Name:").pack(anchor="w")
+        self.name_var = tk.StringVar()
+        ttk.Entry(
+            self.frame,
+            textvariable=self.name_var
+        ).pack(fill="x", pady=(0, 10))
+
+        # Dosage
+        ttk.Label(self.frame, text="Dosage:").pack(anchor="w")
+        self.dosage_var = tk.StringVar()
+        ttk.Entry(
+            self.frame,
+            textvariable=self.dosage_var
+        ).pack(fill="x", pady=(0, 10))
+
+        # Time selection
+        ttk.Label(self.frame, text="Time to Take (HH:MM):").pack(anchor="w")
+
+        # Time frame for hours and minutes
+        time_frame = ttk.Frame(self.frame)
+        time_frame.pack(fill="x", pady=(0, 10))
+
+        # Hours
+        self.hour_var = tk.StringVar(value="08")
+        hour_spinbox = ttk.Spinbox(
+            time_frame,
+            from_=0,
+            to=23,
+            width=5,
+            format="%02.0f",
+            textvariable=self.hour_var
+        )
+        hour_spinbox.pack(side="left")
+
+        ttk.Label(time_frame, text=":").pack(side="left", padx=5)
+
+        # Minutes
+        self.minute_var = tk.StringVar(value="00")
+        minute_spinbox = ttk.Spinbox(
+            time_frame,
+            from_=0,
+            to=59,
+            width=5,
+            format="%02.0f",
+            textvariable=self.minute_var
+        )
+        minute_spinbox.pack(side="left")
+
+        # Reminder toggle
+        self.reminder_var = tk.BooleanVar(value=True)
+        ttk.Checkbutton(
+            self.frame,
+            text="Enable Reminders",
+            variable=self.reminder_var
+        ).pack(pady=20)
+
+        # Add button
+        ttk.Button(
+            self.frame,
+            text="Add Medication",
+            command=self.submit
+        ).pack(pady=20)
+
+    def submit(self):
+        # Validate inputs
+        if not all([self.name_var.get(), self.dosage_var.get()]):
+            messagebox.showerror("Error", "Please fill all required fields")
+            return
+
+        # Create time string
+        time_str = f"{self.hour_var.get()}:{self.minute_var.get()}"
+
+        # Create medication data
+        medication_data = {
+            'name': self.name_var.get(),
+            'dosage': self.dosage_var.get(),
+            'time': time_str,
+            'reminders_enabled': self.reminder_var.get()
+        }
+
+        # Call callback with data
+        self.callback(medication_data)
+
+        # Show success message
+        messagebox.showinfo("Success", "Medication added successfully!")
+
+        # Close window
+        self.window.destroy()
+
+        
 class LogHistory(tk.Frame):
     def __init__(self, parent, controller):
         super().__init__(parent)
         self.controller = controller
         self.current_date = datetime.now()
         self.view_mode = "Daily Log"  # Default view mode
+        self.medications = {}  # Add this to store medications
+
+        # Load medications data
+        self.load_medications()
 
         # Create main container
         self.create_header()
         self.create_calendar_view()
         self.create_bottom_buttons()
+    def refresh_data(self):
+        self.load_medications()  # Reload medications data
+        self.update_calendar_view()  # Update the display
+
+    def load_medications(self):
+        try:
+            with open("medication_data.json", "r") as f:
+                self.medications = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.medications = {}
 
     def create_header(self):
         # Header frame
@@ -515,9 +663,8 @@ class LogHistory(tk.Frame):
         back_btn = ttk.Button(
             header_frame, 
             text="← Back to Dashboard",
-            command=lambda: self.controller.show_frame("Homepage")  # Note: "Homepage" not "Dashboard"
+            command=lambda: self.controller.show_frame("Homepage")
         )
-    
         back_btn.pack(side="left", padx=10)
 
         # Navigation frame
@@ -593,21 +740,16 @@ class LogHistory(tk.Frame):
             font=("Helvetica", 11, "bold")
         ).grid(row=0, column=1, padx=5, pady=5, sticky="w")
 
-        # Example medications (replace with actual data from your system)
-        medications = [
-            {"name": "Calcium", "dosage": "1 tablet, after meals"},
-            {"name": "Vitamin D", "dosage": "2 tablets, morning"}
-        ]
-
-        for i, med in enumerate(medications, 1):
+        # Display user's actual medications
+        for i, (med_name, med_info) in enumerate(self.medications.items(), 1):
             ttk.Label(
                 self.calendar_frame,
-                text=med["name"]
+                text=med_name
             ).grid(row=i, column=0, padx=5, pady=2, sticky="w")
 
             ttk.Label(
                 self.calendar_frame,
-                text=med["dosage"]
+                text=f"{med_info.get('dosage', '')} - {med_info.get('time', '')}"
             ).grid(row=i, column=1, padx=5, pady=2, sticky="w")
 
     def previous_date(self):
@@ -640,141 +782,287 @@ class LogHistory(tk.Frame):
     def show_side_effects_page(self):
         # Implement the side effects page navigation
         self.controller.show_frame("SideEffects")  # You'll need to create this page
-        
-class ReminderSystem:
-    def __init__(self, parent):
-        self.parent = parent
-        self.reminders = {}
-        self.load_reminders()
 
-        # Main reminder frame
-        self.frame = ttk.Frame(parent)
-        self.frame.pack(fill="both", expand=True, padx=10, pady=10)
+class SideEffects(tk.Frame):
+    def __init__(self, parent, controller):
+        super().__init__(parent)
+        self.controller = controller
+        self.medications = {}
 
-        # Header with back button
-        self.header_frame = ttk.Frame(self.frame)
-        self.header_frame.pack(fill="x", pady=5)
+        # Main container
+        self.main_frame = ttk.Frame(self, padding="20")
+        self.main_frame.pack(fill="both", expand=True)
 
-        self.back_button = ttk.Button(
-            self.header_frame, 
-            text="← Back to Dashboard",
-            command=self.go_to_dashboard
+        # Header frame
+        header_frame = ttk.Frame(self.main_frame)
+        header_frame.pack(fill="x", pady=(0, 20))
+
+        # Back button
+        back_btn = ttk.Button(
+            header_frame,
+            text="← Back to Log & History",
+            command=lambda: controller.show_frame("LogHistory")
         )
-        self.back_button.pack(side="left")
+        back_btn.pack(side="left")
 
+        # Title
         ttk.Label(
-            self.header_frame, 
-            text="Medication Reminders", 
+            header_frame,
+            text="Report Side Effects",
             font=("Helvetica", 16, "bold")
         ).pack(side="left", padx=20)
 
-        # Reminders list frame
-        self.reminders_frame = ttk.Frame(self.frame)
-        self.reminders_frame.pack(fill="both", expand=True, pady=10)
+        # Form frame
+        self.form_frame = ttk.Frame(self.main_frame)
+        self.form_frame.pack(fill="both", expand=True)
 
-        self.create_reminder_list()
+        # Selected medication variable
+        self.selected_med = tk.StringVar()
 
-    def create_reminder_list(self):
-        # Clear existing reminders
-        for widget in self.reminders_frame.winfo_children():
+        # Medication selection label FIRST
+        ttk.Label(
+            self.form_frame,
+            text="Select Medication:",
+            font=("Helvetica", 11)
+        ).pack(anchor="w", pady=(0, 5))
+
+        # Create dropdown frame SECOND
+        self.dropdown_frame = ttk.Frame(self.form_frame)
+        self.dropdown_frame.pack(fill="x", pady=(0, 15))
+
+        # Symptoms
+        ttk.Label(
+            self.form_frame,
+            text="Symptoms:",
+            font=("Helvetica", 11)
+        ).pack(anchor="w", pady=(0, 5))
+
+        self.symptoms_text = tk.Text(self.form_frame, height=3)
+        self.symptoms_text.pack(fill="x", pady=(0, 15))
+
+        # Severity
+        ttk.Label(
+            self.form_frame,
+            text="Severity:",
+            font=("Helvetica", 11)
+        ).pack(anchor="w", pady=(0, 5))
+
+        self.severity_var = tk.StringVar()
+        severity_entry = ttk.Entry(
+            self.form_frame,
+            textvariable=self.severity_var
+        )
+        severity_entry.pack(fill="x", pady=(0, 15))
+
+        # Additional Comments
+        ttk.Label(
+            self.form_frame,
+            text="Additional Comments:",
+            font=("Helvetica", 11)
+        ).pack(anchor="w", pady=(0, 5))
+
+        self.comments_text = tk.Text(self.form_frame, height=4)
+        self.comments_text.pack(fill="x", pady=(0, 15))
+
+        # Submit button
+        submit_btn = ttk.Button(
+            self.form_frame,
+            text="Submit Report",
+            command=self.submit_report
+        )
+        submit_btn.pack(pady=20)
+
+    def refresh_data(self):
+        # Load medications
+        self.load_medications()
+
+        # Clear the dropdown frame
+        for widget in self.dropdown_frame.winfo_children():
             widget.destroy()
 
-        # Headers
-        headers = ["Medication", "Time", "Status", "Toggle"]
-        for i, header in enumerate(headers):
-            ttk.Label(
-                self.reminders_frame, 
-                text=header, 
-                font=("Helvetica", 12, "bold")
-            ).grid(row=0, column=i, padx=5, pady=5)
+        # Create new dropdown with updated medications
+        med_names = list(self.medications.keys())
+        default_text = "Select a medication"
 
-        # List medications and their reminders
-        for row, (med_name, reminder_info) in enumerate(self.reminders.items(), start=1):
+        # Reset selected_med
+        self.selected_med.set(default_text)
+
+        # Create new dropdown
+        med_dropdown = ttk.OptionMenu(
+            self.dropdown_frame,
+            self.selected_med,
+            default_text,
+            *([default_text] + med_names)  # Add default text to options
+        )
+        med_dropdown.pack(fill="x")
+
+    def load_medications(self):
+        try:
+            with open("medication_data.json", "r") as f:
+                self.medications = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.medications = {}
+
+    def submit_report(self):
+        # Validate inputs
+        if not self.selected_med.get() or self.selected_med.get() == "Select a medication":
+            messagebox.showerror("Error", "Please select a medication")
+            return
+
+        if not self.symptoms_text.get("1.0", "end-1c").strip():
+            messagebox.showerror("Error", "Please describe the symptoms")
+            return
+
+        if not self.severity_var.get().strip():
+            messagebox.showerror("Error", "Please indicate the severity")
+            return
+
+        # Create report data
+        report = {
+            'medication': self.selected_med.get(),
+            'symptoms': self.symptoms_text.get("1.0", "end-1c"),
+            'severity': self.severity_var.get(),
+            'comments': self.comments_text.get("1.0", "end-1c"),
+            'date': datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        }
+
+        # Save report
+        try:
+            # Load existing reports
+            try:
+                with open("side_effects_reports.json", "r") as f:
+                    reports = json.load(f)
+            except (FileNotFoundError, json.JSONDecodeError):
+                reports = []
+
+            # Add new report
+            reports.append(report)
+
+            # Save updated reports
+            with open("side_effects_reports.json", "w") as f:
+                json.dump(reports, f)
+
+            # Show success message
+            messagebox.showinfo("Success", "Side effects report submitted successfully!")
+
+            # Return to dashboard
+            self.controller.show_frame("Homepage")
+
+        except Exception as e:
+            messagebox.showerror("Error", f"Could not save report: {str(e)}")
+
+class ReminderSystem:
+    def __init__(self, parent):
+        self.parent = parent
+        self.medications = {}
+        self.load_data()
+
+        # Clear existing content
+        for widget in self.parent.winfo_children():
+            widget.destroy()
+
+        # Main container
+        self.main_frame = ttk.Frame(self.parent)
+        self.main_frame.pack(fill="both", expand=True, padx=20, pady=20)
+
+        # Header frame
+        header_frame = ttk.Frame(self.main_frame)
+        header_frame.pack(fill="x", pady=(0, 20))
+
+        # Back button
+        back_btn = ttk.Button(
+            header_frame,
+            text="← Back to Dashboard",
+            command=self.go_back
+        )
+        back_btn.pack(side="left")
+
+        # Title
+        ttk.Label(
+            header_frame,
+            text="Medication Reminders",
+            font=("Helvetica", 16, "bold")
+        ).pack(side="left", padx=20)
+
+        # Create list frame
+        self.list_frame = ttk.Frame(self.main_frame)
+        self.list_frame.pack(fill="both", expand=True)
+
+        # Create headers
+        ttk.Label(
+            self.list_frame,
+            text="Medication",
+            font=("Helvetica", 12, "bold")
+        ).grid(row=0, column=0, padx=20, pady=(0, 10), sticky="w")
+
+        ttk.Label(
+            self.list_frame,
+            text="Reminders",
+            font=("Helvetica", 12, "bold")
+        ).grid(row=0, column=1, padx=20, pady=(0, 10), sticky="w")
+
+        # Display medications and their reminder toggles
+        self.display_medications()
+
+    def display_medications(self):
+        # Load current medications
+        try:
+            with open("medication_data.json", "r") as f:
+                self.medications = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.medications = {}
+
+        # Display each medication with a toggle button
+        for i, (med_name, med_info) in enumerate(self.medications.items(), 1):
             # Medication name
             ttk.Label(
-                self.reminders_frame, 
-                text=med_name
-            ).grid(row=row, column=0, padx=5, pady=2)
+                self.list_frame,
+                text=med_name,
+                font=("Helvetica", 11)
+            ).grid(row=i, column=0, padx=20, pady=10, sticky="w")
 
-            # Reminder time
-            ttk.Label(
-                self.reminders_frame, 
-                text=reminder_info['time']
-            ).grid(row=row, column=1, padx=5, pady=2)
-
-            # Status
-            status_text = "Active" if reminder_info['active'] else "Inactive"
-            ttk.Label(
-                self.reminders_frame, 
-                text=status_text
-            ).grid(row=row, column=2, padx=5, pady=2)
-
-            # Toggle button
-            toggle_btn = ttk.Button(
-                self.reminders_frame,
-                text="Turn Off" if reminder_info['active'] else "Turn On",
-                command=lambda m=med_name: self.toggle_reminder(m)
+            # Reminder toggle
+            reminder_var = tk.BooleanVar(value=med_info.get('reminders_enabled', False))
+            toggle = ttk.Checkbutton(
+                self.list_frame,
+                text="Enable",
+                variable=reminder_var,
+                command=lambda m=med_name, v=reminder_var: self.toggle_reminder(m, v)
             )
-            toggle_btn.grid(row=row, column=3, padx=5, pady=2)
+            toggle.grid(row=i, column=1, padx=20, pady=10, sticky="w")
 
-    def toggle_reminder(self, medication_name):
-        """Toggle reminder status for a medication"""
-        if medication_name in self.reminders:
-            self.reminders[medication_name]['active'] = not self.reminders[medication_name]['active']
-            self.save_reminders()
-            self.create_reminder_list()
+    def toggle_reminder(self, medication_name, var):
+        # Update reminder status in data
+        self.medications[medication_name]['reminders_enabled'] = var.get()
 
-            status = "activated" if self.reminders[medication_name]['active'] else "deactivated"
+        # Save changes
+        try:
+            with open("medication_data.json", "w") as f:
+                json.dump(self.medications, f)
+
+            # Show confirmation
+            status = "enabled" if var.get() else "disabled"
             messagebox.showinfo(
-                "Reminder Update", 
-                f"Reminder for {medication_name} has been {status}."
+                "Reminder Updated", 
+                f"Reminders for {medication_name} have been {status}."
+            )
+        except Exception as e:
+            messagebox.showerror(
+                "Error",
+                f"Could not save reminder settings: {str(e)}"
             )
 
-    def set_reminder(self, medication_name, reminder_time, dosage):
-        """Set a new reminder"""
-        self.reminders[medication_name] = {
-            'time': reminder_time,
-            'active': True,
-            'dosage': dosage
-        }
-        self.save_reminders()
-        self.create_reminder_list()
-
-    def check_reminders(self):
-        """Check and trigger reminders"""
-        current_time = datetime.now().strftime("%H:%M")
-        for med_name, reminder_info in self.reminders.items():
-            if reminder_info['active'] and reminder_info['time'] == current_time:
-                self.trigger_reminder(med_name, reminder_info['dosage'])
-
-    def trigger_reminder(self, medication_name, dosage):
-        """Trigger a desktop notification"""
-        notification.notify(
-            title="Medication Reminder",
-            message=f"Time to take {medication_name}\nDosage: {dosage}",
-            app_icon=None,  # e.g. 'C:\\icon_32x32.ico'
-            timeout=10,  # seconds
-        )
-
-    def save_reminders(self):
-        """Save reminders to file"""
+    def load_data(self):
         try:
-            with open("reminders.json", "w") as f:
-                json.dump(self.reminders, f)
-        except Exception as e:
-            messagebox.showerror("Error", f"Could not save reminders: {str(e)}")
+            with open("medication_data.json", "r") as f:
+                self.medications = json.load(f)
+        except (FileNotFoundError, json.JSONDecodeError):
+            self.medications = {}
+            
 
-    def load_reminders(self):
-        """Load reminders from file"""
-        try:
-            with open("reminders.json", "r") as f:
-                self.reminders = json.load(f)
-        except FileNotFoundError:
-            self.reminders = {}
 
-    def go_to_dashboard(self):
-        """Navigate back to dashboard"""
-        self.parent.show_frame("DashboardPage")
+    def go_back(self):
+        self.parent.destroy()  # This will close the reminders window and return to dashboard
 
 # Add Reminder Dialog
 class AddReminderDialog(tk.Toplevel):
